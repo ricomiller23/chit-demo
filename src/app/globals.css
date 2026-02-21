@@ -1,26 +1,43 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-az-bg: #161616;
+  /* Main Background */
+  --color-az-sidebar: #222222;
+  /* Sidebar & Elements */
+  --color-az-border: #333333;
+  /* Dividers & Borders */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-az-green-light: #bbf7d0;
+  /* Badges & Notes */
+  --color-az-green-dark: #166534;
+  /* Valid values text */
+  --color-az-green-bright: #4ade80;
+  /* Delivered pills */
+
+  --font-sans: 'Inter', system-ui, sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-az-bg);
+  color: #f3f4f6;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.az-card {
+  @apply bg-az-sidebar border border-az-border rounded-[10px] overflow-hidden;
+}
+
+.az-badge {
+  @apply px-2 py-0.5 text-[0.65rem] font-bold rounded;
+}
+
+/* Recharts Custom Utilities */
+.recharts-default-tooltip {
+  @apply !bg-[#111111] !border-[#333333] !rounded-md !shadow-xl !pointer-events-none;
+}
+
+.recharts-tooltip-item-list {
+  @apply !text-gray-200 !text-sm;
 }
