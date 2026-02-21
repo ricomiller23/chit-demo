@@ -31,7 +31,7 @@ const INITIAL_TRX: Transaction[] = [
   { id: "1", date: "Oct 29, 2024", receiptId: "81823", from: "Eric Miller", to: "usr-ed33c809-8eab", asset: 34444, status: "Delivered", isNote: true }
 ];
 
-export default function AZCashDashboard() {
+export default function UtradeDashboard() {
   // --- Global State ---
   const [alphaBal, setAlphaBal] = useState(1000000);
   const [betaBal, setBetaBal] = useState(0);
@@ -163,7 +163,7 @@ export default function AZCashDashboard() {
       <aside className="w-[340px] flex-shrink-0 bg-[#222222] border-r border-[#333333] flex flex-col h-full overflow-y-auto">
         <div className="p-8">
           <div className="mb-10">
-            <h1 className="text-3xl font-semibold text-white tracking-wide">AZ.Cash</h1>
+            <h1 className="text-3xl font-semibold text-white tracking-wide">UTRADE</h1>
             <p className="text-[#9ca3af] text-sm mt-1">chit marketplace</p>
           </div>
 

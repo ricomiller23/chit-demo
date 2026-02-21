@@ -8,7 +8,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "AZ.Cash | CHIT Marketplace",
+  title: "UTRADE | CHIT Marketplace",
   description: "Digital Cash Alternative for Cash-Intensive Operatives.",
 };
 
