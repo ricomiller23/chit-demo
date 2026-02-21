@@ -33,19 +33,20 @@ const INITIAL_TRX: Transaction[] = [
 
 export default function AZCashDashboard() {
   // --- Global State ---
-  const [alphaBal, setAlphaBal] = useState(5999168212.50);
-  const [betaBal, setBetaBal] = useState(8224574.00);
-  const [tradingBal, setTradingBal] = useState(847866);
-  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRX);
-  
+  const [alphaBal, setAlphaBal] = useState(1000000);
+  const [betaBal, setBetaBal] = useState(0);
+  const [tradingBal, setTradingBal] = useState(0);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+
   // --- UI State ---
   const [activeTab, setActiveTab] = useState<TabType>("Trades");
   const [modalType, setModalType] = useState<ModalAction>(null);
-  
+
   // Modal Form State
   const [amount, setAmount] = useState<string>("");
   const [recipient, setRecipient] = useState<string>("");
   const [step, setStep] = useState<1 | 2 | 3>(1); // 1: Input, 2: Processing, 3: Success
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const formatCurrency = (num: number) => `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const formatChit = (num: number) => `⌀${num.toLocaleString('en-US')}`;
@@ -55,27 +56,45 @@ export default function AZCashDashboard() {
     setAmount("");
     setRecipient("");
     setStep(1);
+    setErrorMsg(null);
   };
 
   const handleExecute = () => {
+    setErrorMsg(null);
     const val = parseFloat(amount.replace(/,/g, ''));
-    if (isNaN(val) || val <= 0) return;
+    if (isNaN(val) || val <= 0) {
+      setErrorMsg("Please enter a valid amount greater than 0.");
+      return;
+    }
+
+    if (modalType === "BUY" && val > alphaBal + betaBal) {
+      setErrorMsg("Insufficient USD in Funding Account.");
+      return;
+    }
+
+    if ((modalType === "SELL" || modalType === "XFER") && val > tradingBal) {
+      setErrorMsg("Insufficient CHIT in Trading Account.");
+      return;
+    }
 
     setStep(2); // Processing
 
     setTimeout(() => {
       const receipt = Math.floor(10000 + Math.random() * 90000).toString();
       const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      
+
       let newTrx: Transaction;
 
       if (modalType === "BUY") {
         if (alphaBal >= val) setAlphaBal(p => p - val);
-        else setBetaBal(p => p - val); // Fallback
-        
+        else {
+          const remainder = val - alphaBal;
+          setAlphaBal(0);
+          setBetaBal(p => p - remainder);
+        }
         setTradingBal(p => p + val);
-        newTrx = { id: receipt, date, receiptId: receipt, from: "Alpha Fund", to: "Trading Vault", asset: val, status: "Delivered" };
-      } 
+        newTrx = { id: receipt, date, receiptId: receipt, from: "Funding Accounts", to: "Trading Vault", asset: val, status: "Delivered" };
+      }
       else if (modalType === "SELL") {
         setTradingBal(p => p - val);
         setAlphaBal(p => p + val);
@@ -100,7 +119,7 @@ export default function AZCashDashboard() {
 
   return (
     <div className="flex h-screen w-full bg-[#161616] overflow-hidden text-[#e5e7eb]">
-      
+
       {/* 1. SIDEBAR */}
       <aside className="w-[340px] flex-shrink-0 bg-[#222222] border-r border-[#333333] flex flex-col h-full overflow-y-auto">
         <div className="p-8">
@@ -220,14 +239,13 @@ export default function AZCashDashboard() {
         {/* Dynamic Table Navigation */}
         <div className="flex gap-2 mb-4">
           {(["Trades", "Listed", "Pending"] as TabType[]).map(tab => (
-            <button 
+            <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-8 py-2.5 rounded-t-xl font-bold text-sm transition-colors border ${
-                activeTab === tab 
-                  ? "bg-white text-black border-white" 
+              className={`px-8 py-2.5 rounded-t-xl font-bold text-sm transition-colors border ${activeTab === tab
+                  ? "bg-white text-black border-white"
                   : "border-[#333333] text-[#9ca3af] hover:text-white hover:border-[#444444]"
-              }`}
+                }`}
             >
               {tab}
             </button>
@@ -290,19 +308,19 @@ export default function AZCashDashboard() {
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm">
           <div className="bg-[#222222] border border-[#333333] w-[450px] rounded-2xl shadow-2xl overflow-hidden relative">
             <button onClick={closeModal} className="absolute top-4 right-4 text-[#9ca3af] hover:text-white"><X className="w-5 h-5" /></button>
-            
+
             {step === 1 && (
               <div className="p-8">
                 <h2 className="text-2xl font-bold mb-1 text-white">{modalType === "BUY" ? "Fund Operation" : modalType === "SELL" ? "Redeem Assets" : "Transfer CHITs"}</h2>
                 <p className="text-sm text-[#9ca3af] mb-6">Secured by Deep Authentication & Geolocation Monitoring.</p>
-                
+
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs font-bold text-[#9ca3af] uppercase">Amount ({modalType === "BUY" ? "USD" : "CHIT"})</label>
                     <div className="mt-1 relative">
                       <span className="absolute left-3 top-3 text-white font-mono">{modalType === "BUY" ? "$" : "⌀"}</span>
-                      <input 
-                        type="number" 
+                      <input
+                        type="number"
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
                         placeholder="0.00"
@@ -314,8 +332,8 @@ export default function AZCashDashboard() {
                   {modalType === "XFER" && (
                     <div>
                       <label className="text-xs font-bold text-[#9ca3af] uppercase">Recipient String</label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={recipient}
                         onChange={(e) => setRecipient(e.target.value)}
                         placeholder="e.g. usr-abc123"
@@ -327,17 +345,23 @@ export default function AZCashDashboard() {
                   <div className="mt-6 border border-[#333333] rounded-lg p-4 bg-[#161616]">
                     <div className="flex justify-between text-sm mb-2">
                       <span className="text-[#9ca3af]">Current Balance</span>
-                      <span className="text-white font-mono">{modalType === "BUY" ? formatCurrency(alphaBal) : formatChit(tradingBal)}</span>
+                      <span className="text-white font-mono">{modalType === "BUY" ? formatCurrency(alphaBal + betaBal) : formatChit(tradingBal)}</span>
                     </div>
                     <div className="flex justify-between text-sm font-bold border-t border-[#333333] pt-2">
                       <span className="text-white">Est. Result</span>
                       <span className="text-[#4ade80] font-mono">
-                        {modalType === "BUY" ? formatChit(tradingBal + (parseFloat(amount)||0)) : formatCurrency(alphaBal + (parseFloat(amount)||0))}
+                        {modalType === "BUY" ? formatChit(tradingBal + (parseFloat(amount) || 0)) : formatCurrency(alphaBal + betaBal + (parseFloat(amount) || 0))}
                       </span>
                     </div>
                   </div>
 
-                  <button 
+                  {errorMsg && (
+                    <div className="mt-3 text-red-400 text-sm font-bold bg-red-950/40 p-3 rounded-lg border border-red-900/50">
+                      {errorMsg}
+                    </div>
+                  )}
+
+                  <button
                     onClick={handleExecute}
                     disabled={!amount || isNaN(parseFloat(amount))}
                     className="w-full mt-4 bg-white text-black py-3 rounded-lg font-bold hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -385,8 +409,8 @@ function ChartCard({ title, data }: { title: string, data: any[] }) {
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
             <Line type="monotone" dataKey="val" stroke="#f3f4f6" strokeWidth={1.5} dot={{ r: 1.5, fill: "#f3f4f6" }} activeDot={{ r: 4 }} />
-            <Tooltip 
-              contentStyle={{ backgroundColor: "#111", border: "1px solid #333", borderRadius: "8px" }} 
+            <Tooltip
+              contentStyle={{ backgroundColor: "#111", border: "1px solid #333", borderRadius: "8px" }}
               itemStyle={{ color: "#fff", fontSize: "12px", fontFamily: "monospace" }}
               labelStyle={{ display: "none" }}
             />
