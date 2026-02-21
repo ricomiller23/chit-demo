@@ -1,92 +1,138 @@
 "use client";
 
-import { useState } from "react";
-import { MapPin, Menu, Mail, Download, Printer, MoreVertical } from "lucide-react";
+import { useState, useEffect } from "react";
+import { MapPin, Menu, Mail, Download, Printer, MoreVertical, X, CheckCircle2, Loader2 } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 
-// --- Mock Data --- 
+// --- Types & Initial Data ---
+type TabType = "Trades" | "Listed" | "Pending";
+type ModalAction = "BUY" | "SELL" | "XFER" | null;
+type Transaction = {
+  id: string;
+  date: string;
+  receiptId: string;
+  from: string;
+  to: string;
+  asset: number;
+  status: "Delivered" | "Pending" | "Listed";
+  isNote?: boolean;
+};
+
 const MOCK_CHART_DATA = [
   { val: 10 }, { val: 12 }, { val: 11 }, { val: 15 }, { val: 14 },
   { val: 30 }, { val: 28 }, { val: 45 }, { val: 25 }, { val: 18 },
   { val: 60 }, { val: 55 }, { val: 40 }, { val: 45 }, { val: 20 },
   { val: 22 }, { val: 18 }, { val: 15 }, { val: 12 }, { val: 10 },
 ];
-
 const MOCK_SELLS_DATA = MOCK_CHART_DATA.map(d => ({ val: d.val * 0.3 + 5 }));
 const MOCK_XFERS_DATA = MOCK_CHART_DATA.map(d => ({ val: d.val * 0.1 + 8 }));
 
-const INITIAL_TRADING_BALANCE = 847866;
+const INITIAL_TRX: Transaction[] = [
+  { id: "1", date: "Oct 29, 2024", receiptId: "81823", from: "Eric Miller", to: "usr-ed33c809-8eab", asset: 34444, status: "Delivered", isNote: true }
+];
 
 export default function AZCashDashboard() {
-  const [tradingBal, setTradingBal] = useState(INITIAL_TRADING_BALANCE);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalType, setModalType] = useState<"BUY" | "SELL" | "XFER" | null>(null);
+  // --- Global State ---
+  const [alphaBal, setAlphaBal] = useState(5999168212.50);
+  const [betaBal, setBetaBal] = useState(8224574.00);
+  const [tradingBal, setTradingBal] = useState(847866);
+  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRX);
+  
+  // --- UI State ---
+  const [activeTab, setActiveTab] = useState<TabType>("Trades");
+  const [modalType, setModalType] = useState<ModalAction>(null);
+  
+  // Modal Form State
+  const [amount, setAmount] = useState<string>("");
+  const [recipient, setRecipient] = useState<string>("");
+  const [step, setStep] = useState<1 | 2 | 3>(1); // 1: Input, 2: Processing, 3: Success
 
+  const formatCurrency = (num: number) => `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const formatChit = (num: number) => `⌀${num.toLocaleString('en-US')}`;
 
-  const openAction = (action: "BUY" | "SELL" | "XFER") => {
-    setModalType(action);
-    setIsModalOpen(true);
+  const closeModal = () => {
+    setModalType(null);
+    setAmount("");
+    setRecipient("");
+    setStep(1);
   };
+
+  const handleExecute = () => {
+    const val = parseFloat(amount.replace(/,/g, ''));
+    if (isNaN(val) || val <= 0) return;
+
+    setStep(2); // Processing
+
+    setTimeout(() => {
+      const receipt = Math.floor(10000 + Math.random() * 90000).toString();
+      const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      
+      let newTrx: Transaction;
+
+      if (modalType === "BUY") {
+        if (alphaBal >= val) setAlphaBal(p => p - val);
+        else setBetaBal(p => p - val); // Fallback
+        
+        setTradingBal(p => p + val);
+        newTrx = { id: receipt, date, receiptId: receipt, from: "Alpha Fund", to: "Trading Vault", asset: val, status: "Delivered" };
+      } 
+      else if (modalType === "SELL") {
+        setTradingBal(p => p - val);
+        setAlphaBal(p => p + val);
+        newTrx = { id: receipt, date, receiptId: receipt, from: "Trading Vault", to: "Alpha Fund", asset: val, status: "Delivered" };
+      }
+      else { // XFER
+        setTradingBal(p => p - val);
+        newTrx = { id: receipt, date, receiptId: receipt, from: "Eric Miller", to: recipient || "usr-unknown", asset: val, status: "Pending" };
+      }
+
+      setTransactions(prev => [newTrx, ...prev]);
+      setStep(3); // Success
+    }, 2000);
+  };
+
+  const filteredTrx = transactions.filter(t => {
+    if (activeTab === "Trades") return t.status === "Delivered";
+    if (activeTab === "Pending") return t.status === "Pending";
+    if (activeTab === "Listed") return t.status === "Listed";
+    return true;
+  });
 
   return (
     <div className="flex h-screen w-full bg-[#161616] overflow-hidden text-[#e5e7eb]">
-
-      {/* 1. SIDEBAR (Left Panel) */}
+      
+      {/* 1. SIDEBAR */}
       <aside className="w-[340px] flex-shrink-0 bg-[#222222] border-r border-[#333333] flex flex-col h-full overflow-y-auto">
         <div className="p-8">
-          {/* Logo */}
           <div className="mb-10">
             <h1 className="text-3xl font-semibold text-white tracking-wide">AZ.Cash</h1>
             <p className="text-[#9ca3af] text-sm mt-1">chit marketplace</p>
           </div>
 
-          {/* Market Summary */}
           <div className="mb-8">
             <h3 className="text-[#9ca3af] text-xs font-semibold mb-4 ml-1">Market Summary</h3>
             <div className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-[#9ca3af]">Assurance Balance</span>
-                <span className="font-medium">$10,999,217,368.64</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#9ca3af]">Listed for sale</span>
-                <span className="font-medium">⌀125,101</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#9ca3af]">Circulation</span>
-                <span className="font-medium">⌀9,985,243,683</span>
-              </div>
+              <div className="flex justify-between"><span className="text-[#9ca3af]">Assurance Balance</span><span className="font-medium">$10,999,217,368.64</span></div>
+              <div className="flex justify-between"><span className="text-[#9ca3af]">Listed for sale</span><span className="font-medium">⌀125,101</span></div>
+              <div className="flex justify-between"><span className="text-[#9ca3af]">Circulation</span><span className="font-medium">⌀9,985,243,683</span></div>
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="grid grid-cols-3 gap-3 mb-8">
-            <button onClick={() => openAction("BUY")} className="bg-white text-black py-4 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">BUY</button>
-            <button onClick={() => openAction("SELL")} className="bg-white text-black py-4 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">SELL</button>
-            <button onClick={() => openAction("XFER")} className="bg-white text-black py-4 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">XFER</button>
+            <button onClick={() => setModalType("BUY")} className="bg-white text-black py-4 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">BUY</button>
+            <button onClick={() => setModalType("SELL")} className="bg-white text-black py-4 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">SELL</button>
+            <button onClick={() => setModalType("XFER")} className="bg-white text-black py-4 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">XFER</button>
           </div>
 
-          {/* Pricing Card */}
           <div className="mb-8">
             <h3 className="text-[#9ca3af] text-xs font-semibold mb-3 ml-1">Pricing</h3>
             <div className="border border-[#333333] rounded-xl p-4 space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-[#9ca3af]">New Issue</span>
-                <span>$1.00</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#9ca3af]">Market Price</span>
-                <span>$1.00</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#9ca3af]">Redemption Price</span>
-                <span>$1.00</span>
-              </div>
+              <div className="flex justify-between"><span className="text-[#9ca3af]">New Issue</span><span>$1.00</span></div>
+              <div className="flex justify-between"><span className="text-[#9ca3af]">Market Price</span><span>$1.00</span></div>
+              <div className="flex justify-between"><span className="text-[#9ca3af]">Redemption Price</span><span>$1.00</span></div>
             </div>
           </div>
 
-          {/* Funding Account */}
           <div className="mb-10 pl-1">
             <div className="flex justify-between items-center mb-3">
               <h3 className="text-[#e5e7eb] font-semibold text-[0.95rem]">Funding Account</h3>
@@ -94,21 +140,20 @@ export default function AZCashDashboard() {
             </div>
             <div className="space-y-1 mb-2">
               <div className="flex items-center justify-between">
-                <div className="text-2xl text-[#9ca3af]">$5,999,168,212.50</div>
+                <div className="text-2xl text-[#9ca3af]">{formatCurrency(alphaBal)}</div>
                 <div className="text-xs text-[#9ca3af]">Alpha</div>
               </div>
               <div className="flex items-center justify-between">
-                <div className="text-xl text-[#9ca3af]">$8,224,574.00</div>
+                <div className="text-xl text-[#9ca3af]">{formatCurrency(betaBal)}</div>
                 <div className="text-xs text-[#9ca3af]">Beta</div>
               </div>
             </div>
             <div className="flex items-center justify-between mt-4">
-              <div className="text-xl font-bold text-white">$6,007,392,786.50</div>
+              <div className="text-xl font-bold text-white">{formatCurrency(alphaBal + betaBal)}</div>
               <div className="text-[0.65rem] font-bold text-white">Sub Accounts</div>
             </div>
           </div>
 
-          {/* Trading Account */}
           <div className="pl-1">
             <div className="flex justify-between items-center mb-3">
               <h3 className="text-[#e5e7eb] font-semibold text-[0.95rem]">Trading Account</h3>
@@ -125,10 +170,8 @@ export default function AZCashDashboard() {
         </div>
       </aside>
 
-      {/* 2. MAIN TRADING DASHBOARD (Right Panel) */}
-      <main className="flex-1 flex flex-col h-full bg-[#161616] p-10 overflow-y-auto">
-
-        {/* Header */}
+      {/* 2. MAIN TRADING DASHBOARD */}
+      <main className="flex-1 flex flex-col h-full p-10 overflow-y-auto relative">
         <header className="flex justify-between items-center mb-8">
           <h2 className="text-3xl font-bold text-white">Trade</h2>
           <div className="flex items-center gap-4">
@@ -144,7 +187,6 @@ export default function AZCashDashboard() {
           </div>
         </header>
 
-        {/* Top Stat Cards Row */}
         <div className="grid grid-cols-3 gap-6 mb-6">
           <div className="border border-[#333333] rounded-2xl p-6 bg-[#161616]">
             <div className="text-xs text-[#9ca3af] mb-4">Buy Orders</div>
@@ -169,20 +211,30 @@ export default function AZCashDashboard() {
           </div>
         </div>
 
-        {/* Recharts Row */}
         <div className="grid grid-cols-3 gap-6 mb-8">
           <ChartCard title="Buys" data={MOCK_CHART_DATA} />
           <ChartCard title="Sells" data={MOCK_SELLS_DATA} />
           <ChartCard title="Xfers" data={MOCK_XFERS_DATA} />
         </div>
 
-        {/* Tables Section */}
+        {/* Dynamic Table Navigation */}
         <div className="flex gap-2 mb-4">
-          <button className="bg-white text-black px-8 py-2.5 rounded-t-xl font-bold text-sm">Trades</button>
-          <button className="border border-[#333333] text-[#9ca3af] px-8 py-2.5 rounded-t-xl font-medium text-sm hover:text-white hover:border-[#444444] transition-colors">Listed</button>
-          <button className="border border-[#333333] text-[#9ca3af] px-8 py-2.5 rounded-t-xl font-medium text-sm hover:text-white hover:border-[#444444] transition-colors">Pending</button>
+          {(["Trades", "Listed", "Pending"] as TabType[]).map(tab => (
+            <button 
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-8 py-2.5 rounded-t-xl font-bold text-sm transition-colors border ${
+                activeTab === tab 
+                  ? "bg-white text-black border-white" 
+                  : "border-[#333333] text-[#9ca3af] hover:text-white hover:border-[#444444]"
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
         </div>
 
+        {/* Dynamic Transaction Table */}
         <div className="flex-1 bg-[#222222] border border-[#333333] rounded-b-2xl rounded-tr-2xl p-2 min-h-[300px]">
           <table className="w-full text-left text-sm">
             <thead>
@@ -195,68 +247,136 @@ export default function AZCashDashboard() {
                 <th className="font-normal py-4 px-6">Status</th>
                 <th className="py-4 px-6 text-right">
                   <div className="flex justify-end gap-4 text-[#9ca3af]">
-                    <Mail className="w-4 h-4 cursor-pointer hover:text-white" />
-                    <Download className="w-4 h-4 cursor-pointer hover:text-white" />
-                    <Printer className="w-4 h-4 cursor-pointer hover:text-white" />
+                    <Mail className="w-4 h-4 cursor-pointer hover:text-white transition-colors" />
+                    <Download className="w-4 h-4 cursor-pointer hover:text-white transition-colors" />
+                    <Printer className="w-4 h-4 cursor-pointer hover:text-white transition-colors" />
                   </div>
                 </th>
               </tr>
             </thead>
             <tbody>
-              <tr className="hover:bg-[#2a2a2a] transition-colors group">
-                <td className="py-4 px-6">Oct 29,<br /><span className="text-[#9ca3af] text-xs">2024</span></td>
-                <td className="py-4 px-6">81823</td>
-                <td className="py-4 px-6">Eric Miller</td>
-                <td className="py-4 px-6">usr-<br /><span className="text-[#9ca3af] text-xs">ed33c809-8eab</span></td>
-                <td className="py-4 px-6">⌀(34,444)</td>
-                <td className="py-4 px-6">
-                  <span className="bg-[#bbf7d0] text-[#166534] text-[0.65rem] font-bold px-2.5 py-1 rounded mr-2">Delivered</span>
-                  <span className="bg-[#bbf7d0] text-[#166534] text-[0.65rem] font-bold px-2.5 py-1 rounded">Note</span>
-                </td>
-                <td className="py-4 px-6 text-right opacity-0 group-hover:opacity-100 transition-opacity">
-                  <MoreVertical className="w-4 h-4 ml-auto text-[#9ca3af] cursor-pointer" />
-                </td>
-              </tr>
+              {filteredTrx.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="text-center py-10 text-[#9ca3af] italic">
+                    No {activeTab.toLowerCase()} records found.
+                  </td>
+                </tr>
+              )}
+              {filteredTrx.map(t => (
+                <tr key={t.id} className="hover:bg-[#2a2a2a] transition-colors group">
+                  <td className="py-4 px-6">{t.date}</td>
+                  <td className="py-4 px-6">{t.receiptId}</td>
+                  <td className="py-4 px-6">{t.from}</td>
+                  <td className="py-4 px-6">{t.to}</td>
+                  <td className="py-4 px-6 font-mono text-white">⌀{t.asset.toLocaleString()}</td>
+                  <td className="py-4 px-6">
+                    <span className={`text-[0.65rem] font-bold px-2.5 py-1 rounded mr-2 ${t.status === 'Pending' ? 'bg-amber-200 text-amber-800' : 'bg-[#bbf7d0] text-[#166534]'}`}>
+                      {t.status}
+                    </span>
+                    {t.isNote && <span className="bg-[#bbf7d0] text-[#166534] text-[0.65rem] font-bold px-2.5 py-1 rounded">Note</span>}
+                  </td>
+                  <td className="py-4 px-6 text-right opacity-0 group-hover:opacity-100 transition-opacity">
+                    <MoreVertical className="w-4 h-4 ml-auto text-[#9ca3af] cursor-pointer hover:text-white" />
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
-
       </main>
 
-      {/* Basic Mock Action Overlay */}
-      {isModalOpen && (
+      {/* INTERACTIVE MODAL FLOWS */}
+      {modalType && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm">
-          <div className="bg-[#222222] border border-[#333333] w-[400px] p-8 rounded-2xl shadow-2xl">
-            <h2 className="text-xl font-bold mb-4 text-white">Execute {modalType}</h2>
-            <p className="text-sm text-[#9ca3af] mb-8">This action is protected by Deep Authentication. Geolocation verified.</p>
+          <div className="bg-[#222222] border border-[#333333] w-[450px] rounded-2xl shadow-2xl overflow-hidden relative">
+            <button onClick={closeModal} className="absolute top-4 right-4 text-[#9ca3af] hover:text-white"><X className="w-5 h-5" /></button>
+            
+            {step === 1 && (
+              <div className="p-8">
+                <h2 className="text-2xl font-bold mb-1 text-white">{modalType === "BUY" ? "Fund Operation" : modalType === "SELL" ? "Redeem Assets" : "Transfer CHITs"}</h2>
+                <p className="text-sm text-[#9ca3af] mb-6">Secured by Deep Authentication & Geolocation Monitoring.</p>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-[#9ca3af] uppercase">Amount ({modalType === "BUY" ? "USD" : "CHIT"})</label>
+                    <div className="mt-1 relative">
+                      <span className="absolute left-3 top-3 text-white font-mono">{modalType === "BUY" ? "$" : "⌀"}</span>
+                      <input 
+                        type="number" 
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        placeholder="0.00"
+                        className="w-full bg-[#161616] border border-[#333333] text-white font-mono text-lg rounded-lg py-2 pl-8 pr-4 focus:outline-none focus:border-white transition-colors"
+                      />
+                    </div>
+                  </div>
 
-            <button
-              onClick={() => {
-                if (modalType === "XFER" || modalType === "SELL") setTradingBal(p => p - 1000);
-                if (modalType === "BUY") setTradingBal(p => p + 1000);
-                setIsModalOpen(false);
-              }}
-              className="w-full bg-white text-black py-3 rounded-lg font-bold hover:bg-gray-200 transition-colors"
-            >
-              Confirm Mock Execution
-            </button>
-            <button
-              onClick={() => setIsModalOpen(false)}
-              className="w-full text-[#9ca3af] mt-4 text-xs font-bold hover:text-white"
-            >
-              Cancel
-            </button>
+                  {modalType === "XFER" && (
+                    <div>
+                      <label className="text-xs font-bold text-[#9ca3af] uppercase">Recipient String</label>
+                      <input 
+                        type="text" 
+                        value={recipient}
+                        onChange={(e) => setRecipient(e.target.value)}
+                        placeholder="e.g. usr-abc123"
+                        className="w-full mt-1 bg-[#161616] border border-[#333333] text-white rounded-lg py-2 px-4 focus:outline-none focus:border-white transition-colors"
+                      />
+                    </div>
+                  )}
+
+                  <div className="mt-6 border border-[#333333] rounded-lg p-4 bg-[#161616]">
+                    <div className="flex justify-between text-sm mb-2">
+                      <span className="text-[#9ca3af]">Current Balance</span>
+                      <span className="text-white font-mono">{modalType === "BUY" ? formatCurrency(alphaBal) : formatChit(tradingBal)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm font-bold border-t border-[#333333] pt-2">
+                      <span className="text-white">Est. Result</span>
+                      <span className="text-[#4ade80] font-mono">
+                        {modalType === "BUY" ? formatChit(tradingBal + (parseFloat(amount)||0)) : formatCurrency(alphaBal + (parseFloat(amount)||0))}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={handleExecute}
+                    disabled={!amount || isNaN(parseFloat(amount))}
+                    className="w-full mt-4 bg-white text-black py-3 rounded-lg font-bold hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Execute {modalType}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="p-12 flex flex-col items-center justify-center text-center">
+                <Loader2 className="w-12 h-12 text-white animate-spin mb-4" />
+                <h3 className="text-xl font-bold text-white mb-2">Authenticating</h3>
+                <p className="text-[#9ca3af] text-sm animate-pulse">Running Seed-to-Sale Origin Verification...</p>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="p-12 flex flex-col items-center justify-center text-center">
+                <CheckCircle2 className="w-16 h-16 text-[#4ade80] mb-4" />
+                <h3 className="text-2xl font-bold text-white mb-2">Transaction Complete</h3>
+                <p className="text-[#9ca3af] text-sm mb-8">Calculations applied and ledger updated cleanly.</p>
+                <button onClick={closeModal} className="w-full bg-white text-black py-3 rounded-lg font-bold hover:bg-gray-200 transition-colors">
+                  Return to Dashboard
+                </button>
+              </div>
+            )}
+
           </div>
         </div>
       )}
-
     </div>
   );
 }
 
 function ChartCard({ title, data }: { title: string, data: any[] }) {
   return (
-    <div className="bg-[#333333] rounded-2xl p-5 flex flex-col justify-between h-[160px]">
+    <div className="bg-[#333333] rounded-2xl p-5 flex flex-col justify-between h-[160px] hover:shadow-lg transition-shadow">
       <div>
         <h4 className="font-bold text-white text-sm">{title}</h4>
         <div className="text-[#9ca3af] text-[0.65rem] mt-0.5">Sep 30 - Oct 30</div>
@@ -265,7 +385,11 @@ function ChartCard({ title, data }: { title: string, data: any[] }) {
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
             <Line type="monotone" dataKey="val" stroke="#f3f4f6" strokeWidth={1.5} dot={{ r: 1.5, fill: "#f3f4f6" }} activeDot={{ r: 4 }} />
-            <Tooltip content={<div className="hidden" />} cursor={{ stroke: '#555555', strokeWidth: 1 }} />
+            <Tooltip 
+              contentStyle={{ backgroundColor: "#111", border: "1px solid #333", borderRadius: "8px" }} 
+              itemStyle={{ color: "#fff", fontSize: "12px", fontFamily: "monospace" }}
+              labelStyle={{ display: "none" }}
+            />
           </LineChart>
         </ResponsiveContainer>
       </div>
