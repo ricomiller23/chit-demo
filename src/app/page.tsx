@@ -6,7 +6,7 @@ import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 
 // --- Types & Initial Data ---
 type TabType = "Trades" | "Listed" | "Pending";
-type ModalAction = "BUY" | "SELL" | "XFER" | "DEPOSIT" | "WITHDRAW" | null;
+type ModalAction = "BUY" | "SELL" | "XFER" | "CASH_PICKUP" | "CASH_DROP" | null;
 type Transaction = {
   id: string;
   date: string;
@@ -46,6 +46,7 @@ export default function AZCashDashboard() {
   // Modal Form State
   const [amount, setAmount] = useState<string>("");
   const [recipient, setRecipient] = useState<string>("");
+  const [location, setLocation] = useState<string>("");
   const [step, setStep] = useState<1 | 2 | 3>(1); // 1: Input, 2: Processing, 3: Success
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -56,8 +57,22 @@ export default function AZCashDashboard() {
     setModalType(null);
     setAmount("");
     setRecipient("");
+    setLocation("");
     setStep(1);
     setErrorMsg(null);
+  };
+
+  const handleSimulatePayment = () => {
+    setIsMenuOpen(false);
+    const amount = Math.floor(Math.random() * 50000) + 1000;
+    const receipt = Math.floor(10000 + Math.random() * 90000).toString();
+    const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const users = ["usr-781b-9a", "usr-33ca-8c", "usr-910f-2b", "usr-881e-1a", "usr-bb45-21"];
+    const fromUser = users[Math.floor(Math.random() * users.length)];
+
+    setTradingBal(p => p + amount);
+    const newTrx: Transaction = { id: receipt, date, receiptId: receipt, from: fromUser, to: "Eric Miller", asset: amount, status: "Delivered" };
+    setTransactions(prev => [newTrx, ...prev]);
   };
 
   const handleExecute = () => {
@@ -68,13 +83,18 @@ export default function AZCashDashboard() {
       return;
     }
 
+    if ((modalType === "CASH_PICKUP" || modalType === "CASH_DROP") && !location) {
+      setErrorMsg("Please select a pre-authorized facility location.");
+      return;
+    }
+
     if (modalType === "BUY" && val > alphaBal + betaBal) {
       setErrorMsg("Insufficient USD in Funding Account.");
       return;
     }
 
-    if (modalType === "WITHDRAW" && val > alphaBal + betaBal) {
-      setErrorMsg("Insufficient USD in Funding Account to withdraw.");
+    if (modalType === "CASH_DROP" && val > alphaBal + betaBal) {
+      setErrorMsg("Insufficient USD in Funding Account to schedule a drop-off.");
       return;
     }
 
@@ -110,18 +130,18 @@ export default function AZCashDashboard() {
         setTradingBal(p => p - val);
         newTrx = { id: receipt, date, receiptId: receipt, from: "Eric Miller", to: recipient || "usr-unknown", asset: val, status: "Pending" };
       }
-      else if (modalType === "DEPOSIT") {
+      else if (modalType === "CASH_PICKUP") {
         setTradingBal(p => p + val);
-        newTrx = { id: receipt, date, receiptId: receipt, from: "External Bank / CIT", to: "Trading Vault", asset: val, status: "Delivered" };
+        newTrx = { id: receipt, date, receiptId: receipt, from: `Physical Vault (${location})`, to: "Trading Vault", asset: val, status: "Pending" };
       }
-      else if (modalType === "WITHDRAW") {
+      else if (modalType === "CASH_DROP") {
         if (alphaBal >= val) setAlphaBal(p => p - val);
         else {
           const remainder = val - alphaBal;
           setAlphaBal(0);
           setBetaBal(p => p - remainder);
         }
-        newTrx = { id: receipt, date, receiptId: receipt, from: "Funding Accounts", to: "External Bank", asset: val, status: "Delivered" };
+        newTrx = { id: receipt, date, receiptId: receipt, from: "Funding Accounts", to: `Physical Vault (${location})`, asset: val, status: "Pending" };
       }
 
       setTransactions(prev => [newTrx!, ...prev]);
@@ -228,18 +248,25 @@ export default function AZCashDashboard() {
               </button>
 
               {isMenuOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-[#222222] border border-[#333333] rounded-xl shadow-2xl py-2 z-40">
+                <div className="absolute right-0 mt-2 w-64 bg-[#222222] border border-[#333333] rounded-xl shadow-2xl py-2 z-40">
                   <button
-                    onClick={() => { setModalType("DEPOSIT"); setIsMenuOpen(false); }}
+                    onClick={() => { setModalType("CASH_PICKUP"); setIsMenuOpen(false); }}
                     className="w-full text-left px-4 py-3 text-sm text-white font-semibold hover:bg-[#333333] transition-colors"
                   >
-                    Deposit Funds (Auto-CHIT)
+                    Schedule Cash Pick Up (CIT)
                   </button>
                   <button
-                    onClick={() => { setModalType("WITHDRAW"); setIsMenuOpen(false); }}
+                    onClick={() => { setModalType("CASH_DROP"); setIsMenuOpen(false); }}
                     className="w-full text-left px-4 py-3 text-sm text-[#f87171] font-semibold hover:bg-[#333333] transition-colors"
                   >
-                    Withdraw to Bank (USD)
+                    Schedule Cash Drop-Off (CIT)
+                  </button>
+                  <div className="border-t border-[#333333] my-1"></div>
+                  <button
+                    onClick={handleSimulatePayment}
+                    className="w-full text-left px-4 py-3 text-sm text-[#4ade80] font-semibold hover:bg-[#333333] transition-colors"
+                  >
+                    Simulate Incoming Payment
                   </button>
                 </div>
               )}
@@ -356,8 +383,8 @@ export default function AZCashDashboard() {
                   {modalType === "BUY" ? "Fund Operation" :
                     modalType === "SELL" ? "Redeem Assets" :
                       modalType === "XFER" ? "Transfer CHITs" :
-                        modalType === "DEPOSIT" ? "External Deposit" :
-                          "Withdraw to Bank"}
+                        modalType === "CASH_PICKUP" ? "Schedule Cash Pick Up" :
+                          "Schedule Cash Drop-Off"}
                 </h2>
                 <p className="text-sm text-[#9ca3af] mb-6">Secured by Deep Authentication & Geolocation Monitoring.</p>
 
@@ -389,13 +416,18 @@ export default function AZCashDashboard() {
                     </div>
                   )}
 
-                  {modalType === "WITHDRAW" && (
+                  {(modalType === "CASH_PICKUP" || modalType === "CASH_DROP") && (
                     <div>
-                      <label className="text-xs font-bold text-[#9ca3af] uppercase">Destination Bank</label>
-                      <select className="w-full mt-1 bg-[#161616] border border-[#333333] text-white rounded-lg py-3 px-4 focus:outline-none focus:border-white transition-colors cursor-pointer appearance-none">
-                        <option>Pre-Approved: Chase Bank (...4559)</option>
-                        <option>Pre-Approved: SVB (...8112)</option>
-                        <option>Pre-Approved: Signature (...0991)</option>
+                      <label className="text-xs font-bold text-[#9ca3af] uppercase">Facility Location</label>
+                      <select
+                        value={location}
+                        onChange={(e) => setLocation(e.target.value)}
+                        className="w-full mt-1 bg-[#161616] border border-[#333333] text-white rounded-lg py-3 px-4 focus:outline-none focus:border-white transition-colors cursor-pointer appearance-none"
+                      >
+                        <option value="">Select Pre-Authorized Facility...</option>
+                        <option value="store-1">Retail Store #001 (Miami, FL)</option>
+                        <option value="store-2">Distribution Hub (Orlando, FL)</option>
+                        <option value="store-3">Processing Center (Tampa, FL)</option>
                       </select>
                     </div>
                   )}
@@ -404,8 +436,8 @@ export default function AZCashDashboard() {
                     <div className="flex justify-between text-sm mb-2">
                       <span className="text-[#9ca3af]">Current Balance</span>
                       <span className="text-white font-mono">
-                        {modalType === "BUY" || modalType === "WITHDRAW" ? formatCurrency(alphaBal + betaBal) :
-                          modalType === "DEPOSIT" ? "External Fiat" :
+                        {modalType === "BUY" || modalType === "CASH_DROP" ? formatCurrency(alphaBal + betaBal) :
+                          modalType === "CASH_PICKUP" ? "Physical Fiat" :
                             formatChit(tradingBal)}
                       </span>
                     </div>
@@ -415,8 +447,8 @@ export default function AZCashDashboard() {
                         {modalType === "BUY" ? formatChit(tradingBal + (parseFloat(amount) || 0)) :
                           modalType === "SELL" ? formatCurrency(alphaBal + betaBal + (parseFloat(amount) || 0)) :
                             modalType === "XFER" ? formatChit(tradingBal - (parseFloat(amount) || 0)) :
-                              modalType === "DEPOSIT" ? formatChit(tradingBal + (parseFloat(amount) || 0)) :
-                                modalType === "WITHDRAW" ? formatCurrency(alphaBal + betaBal - (parseFloat(amount) || 0)) :
+                              modalType === "CASH_PICKUP" ? formatChit(tradingBal + (parseFloat(amount) || 0)) :
+                                modalType === "CASH_DROP" ? formatCurrency(alphaBal + betaBal - (parseFloat(amount) || 0)) :
                                   ""}
                       </span>
                     </div>
