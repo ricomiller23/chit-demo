@@ -6,7 +6,7 @@ import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 
 // --- Types & Initial Data ---
 type TabType = "Trades" | "Listed" | "Pending";
-type ModalAction = "BUY" | "SELL" | "XFER" | "CASH_PICKUP" | "CASH_DROP" | null;
+type ModalAction = "BUY" | "SELL" | "XFER" | "CASH_PICKUP" | "CASH_DROP" | "WIRE_OUT" | null;
 type Transaction = {
   id: string;
   date: string;
@@ -50,6 +50,18 @@ export default function UtradeDashboard() {
   const [step, setStep] = useState<1 | 2 | 3>(1); // 1: Input, 2: Processing, 3: Success
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Mobile Detection
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
   const formatCurrency = (num: number) => `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const formatChit = (num: number) => `⌀${num.toLocaleString('en-US')}`;
 
@@ -88,13 +100,8 @@ export default function UtradeDashboard() {
       return;
     }
 
-    if (modalType === "BUY" && val > alphaBal + betaBal) {
+    if ((modalType === "BUY" || modalType === "CASH_DROP" || modalType === "WIRE_OUT") && val > alphaBal + betaBal) {
       setErrorMsg("Insufficient USD in Funding Account.");
-      return;
-    }
-
-    if (modalType === "CASH_DROP" && val > alphaBal + betaBal) {
-      setErrorMsg("Insufficient USD in Funding Account to schedule a drop-off.");
       return;
     }
 
@@ -143,6 +150,15 @@ export default function UtradeDashboard() {
         }
         newTrx = { id: receipt, date, receiptId: receipt, from: "Funding Accounts", to: `Physical Vault (${location})`, asset: val, status: "Pending" };
       }
+      else if (modalType === "WIRE_OUT") {
+        if (alphaBal >= val) setAlphaBal(p => p - val);
+        else {
+          const remainder = val - alphaBal;
+          setAlphaBal(0);
+          setBetaBal(p => p - remainder);
+        }
+        newTrx = { id: receipt, date, receiptId: receipt, from: "Funding Accounts", to: "Bank (****6789)", asset: val, status: "Delivered" };
+      }
 
       setTransactions(prev => [newTrx!, ...prev]);
       setStep(3); // Success
@@ -155,6 +171,144 @@ export default function UtradeDashboard() {
     if (activeTab === "Listed") return t.status === "Listed";
     return true;
   });
+
+  if (isMobile) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen w-full bg-[#161616] text-[#e5e7eb] p-10 text-center">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-white tracking-widest mb-1">UTRADE</h1>
+          <p className="text-[0.6rem] text-[#9ca3af] uppercase tracking-[0.3em] font-black">chit marketplace</p>
+        </div>
+        <div className="max-w-sm">
+          <p className="text-xl font-medium text-white/90">
+            Sorry, you need a desktop.
+          </p>
+          <div className="mt-6 h-[1px] w-12 bg-white/10 mx-auto"></div>
+          <p className="text-[0.7rem] text-[#9ca3af] mt-6 leading-relaxed uppercase tracking-widest font-bold">
+            Terminal Access Restricted to Desktop
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Helper for Modal Rendering to avoid duplication
+  function renderModal() {
+    return (
+      <div className="fixed inset-0 bg-black/90 flex items-end sm:items-center justify-center z-[100] backdrop-blur-md">
+        <div className="bg-[#222222] border-t sm:border border-[#444444] w-full sm:w-[450px] rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden relative pb-8 sm:pb-0">
+          <button onClick={closeModal} className="absolute top-6 right-6 text-[#9ca3af] hover:text-white"><X className="w-6 h-6" /></button>
+
+          {step === 1 && (
+            <div className="p-8">
+              <h2 className="text-2xl font-bold mb-1 text-white">
+                {modalType === "BUY" ? "Fund Operation" :
+                  modalType === "SELL" ? "Redeem Assets" :
+                    modalType === "XFER" ? "Transfer CHITs" :
+                      modalType === "CASH_PICKUP" ? "Schedule Cash Pick Up" :
+                        modalType === "CASH_DROP" ? "Schedule Cash Drop-Off" :
+                          "Wire Out USD"}
+              </h2>
+              <p className="text-xs text-[#9ca3af] mb-8 font-medium">Deep Auth & Geolocation Active.</p>
+
+              <div className="space-y-6">
+                <div>
+                  <label className="text-[0.65rem] font-black text-[#9ca3af] uppercase tracking-tighter">Amount ({modalType === "SELL" || modalType === "XFER" ? "CHIT" : "USD"})</label>
+                  <div className="mt-2 relative">
+                    <span className="absolute left-4 top-3.5 text-white font-mono text-xl">{modalType === "SELL" || modalType === "XFER" ? "⌀" : "$"}</span>
+                    <input
+                      type="number"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full bg-[#161616] border border-[#333333] text-white font-mono text-2xl rounded-2xl py-3.5 pl-10 pr-4 focus:outline-none focus:border-white transition-all shadow-inner"
+                    />
+                  </div>
+                </div>
+
+                {modalType === "XFER" && (
+                  <div>
+                    <label className="text-[0.65rem] font-black text-[#9ca3af] uppercase tracking-tighter">Recipient</label>
+                    <input
+                      type="text"
+                      value={recipient}
+                      onChange={(e) => setRecipient(e.target.value)}
+                      placeholder="usr-abc123"
+                      className="w-full mt-2 bg-[#161616] border border-[#333333] text-white rounded-2xl py-3.5 px-5 focus:outline-none focus:border-white font-mono text-sm"
+                    />
+                  </div>
+                )}
+
+                {(modalType === "CASH_PICKUP" || modalType === "CASH_DROP") && (
+                  <div>
+                    <label className="text-[0.65rem] font-black text-[#9ca3af] uppercase tracking-tighter">Location</label>
+                    <select
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      className="w-full mt-2 bg-[#161616] border border-[#333333] text-white rounded-2xl py-4 px-5 focus:outline-none focus:border-white cursor-pointer appearance-none text-sm "
+                    >
+                      <option value="">Select Facility...</option>
+                      <option value="store-1">Retail Store #001 (MIA)</option>
+                      <option value="store-2">Distribution Hub (ORL)</option>
+                      <option value="store-3">Processing Center (TPA)</option>
+                    </select>
+                  </div>
+                )}
+
+                <div className="bg-white/5 rounded-2xl p-5 border border-white/10">
+                  <div className="flex justify-between text-xs mb-3">
+                    <span className="text-[#9ca3af] font-bold">Est. Result</span>
+                    <span className="text-[#4ade80] font-mono font-black">
+                      {modalType === "BUY" ? formatChit(tradingBal + (parseFloat(amount) || 0)) :
+                        modalType === "SELL" ? formatCurrency(alphaBal + betaBal + (parseFloat(amount) || 0)) :
+                          modalType === "XFER" ? formatChit(tradingBal - (parseFloat(amount) || 0)) :
+                            modalType === "CASH_PICKUP" ? formatChit(tradingBal + (parseFloat(amount) || 0)) :
+                              modalType === "CASH_DROP" || modalType === "WIRE_OUT" ? formatCurrency(alphaBal + betaBal - (parseFloat(amount) || 0)) :
+                                ""}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleExecute}
+                    disabled={!amount || isNaN(parseFloat(amount))}
+                    className="w-full bg-white text-black py-4 rounded-2xl font-black text-sm uppercase tracking-widest hover:scale-[0.98] active:scale-95 transition-all disabled:opacity-20 shadow-xl"
+                  >
+                    Execute {modalType}
+                  </button>
+                </div>
+
+                {errorMsg && (
+                  <div className="text-red-400 text-[0.65rem] font-black bg-red-950/40 p-3 rounded-xl border border-red-900/50 uppercase text-center">
+                    {errorMsg}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="p-20 flex flex-col items-center justify-center text-center">
+              <Loader2 className="w-16 h-16 text-white animate-spin mb-6 opacity-80" />
+              <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-tighter">Securing</h3>
+              <p className="text-[#9ca3af] text-xs font-bold animate-pulse uppercase tracking-widest">Running Origin Verification...</p>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="p-16 flex flex-col items-center justify-center text-center">
+              <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mb-6">
+                <CheckCircle2 className="w-10 h-10 text-[#4ade80]" />
+              </div>
+              <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-tight">Confirmed</h3>
+              <p className="text-[#9ca3af] text-xs font-medium mb-10">Ledger synchronized successfully.</p>
+              <button onClick={closeModal} className="w-full bg-white text-black py-4 rounded-2xl font-black text-xs uppercase tracking-widest">
+                Done
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen w-full bg-[#161616] overflow-hidden text-[#e5e7eb]">
@@ -260,6 +414,12 @@ export default function UtradeDashboard() {
                     className="w-full text-left px-4 py-3 text-sm text-[#f87171] font-semibold hover:bg-[#333333] transition-colors"
                   >
                     Schedule Cash Drop-Off (CIT)
+                  </button>
+                  <button
+                    onClick={() => { setModalType("WIRE_OUT"); setIsMenuOpen(false); }}
+                    className="w-full text-left px-4 py-3 text-sm text-white font-semibold hover:bg-[#333333] transition-colors"
+                  >
+                    Wire Money Out (Fiat)
                   </button>
                   <div className="border-t border-[#333333] my-1"></div>
                   <button
@@ -369,130 +529,10 @@ export default function UtradeDashboard() {
             </tbody>
           </table>
         </div>
+
+        {/* MODAL (REUSED) */}
+        {modalType && renderModal()}
       </main>
-
-      {/* INTERACTIVE MODAL FLOWS */}
-      {modalType && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm">
-          <div className="bg-[#222222] border border-[#333333] w-[450px] rounded-2xl shadow-2xl overflow-hidden relative">
-            <button onClick={closeModal} className="absolute top-4 right-4 text-[#9ca3af] hover:text-white"><X className="w-5 h-5" /></button>
-
-            {step === 1 && (
-              <div className="p-8">
-                <h2 className="text-2xl font-bold mb-1 text-white">
-                  {modalType === "BUY" ? "Fund Operation" :
-                    modalType === "SELL" ? "Redeem Assets" :
-                      modalType === "XFER" ? "Transfer CHITs" :
-                        modalType === "CASH_PICKUP" ? "Schedule Cash Pick Up" :
-                          "Schedule Cash Drop-Off"}
-                </h2>
-                <p className="text-sm text-[#9ca3af] mb-6">Secured by Deep Authentication & Geolocation Monitoring.</p>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-xs font-bold text-[#9ca3af] uppercase">Amount ({modalType === "SELL" || modalType === "XFER" ? "CHIT" : "USD"})</label>
-                    <div className="mt-1 relative">
-                      <span className="absolute left-3 top-3 text-white font-mono">{modalType === "SELL" || modalType === "XFER" ? "⌀" : "$"}</span>
-                      <input
-                        type="number"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        placeholder="0.00"
-                        className="w-full bg-[#161616] border border-[#333333] text-white font-mono text-lg rounded-lg py-2 pl-8 pr-4 focus:outline-none focus:border-white transition-colors"
-                      />
-                    </div>
-                  </div>
-
-                  {modalType === "XFER" && (
-                    <div>
-                      <label className="text-xs font-bold text-[#9ca3af] uppercase">Recipient String</label>
-                      <input
-                        type="text"
-                        value={recipient}
-                        onChange={(e) => setRecipient(e.target.value)}
-                        placeholder="e.g. usr-abc123"
-                        className="w-full mt-1 bg-[#161616] border border-[#333333] text-white rounded-lg py-2 px-4 focus:outline-none focus:border-white transition-colors"
-                      />
-                    </div>
-                  )}
-
-                  {(modalType === "CASH_PICKUP" || modalType === "CASH_DROP") && (
-                    <div>
-                      <label className="text-xs font-bold text-[#9ca3af] uppercase">Facility Location</label>
-                      <select
-                        value={location}
-                        onChange={(e) => setLocation(e.target.value)}
-                        className="w-full mt-1 bg-[#161616] border border-[#333333] text-white rounded-lg py-3 px-4 focus:outline-none focus:border-white transition-colors cursor-pointer appearance-none"
-                      >
-                        <option value="">Select Pre-Authorized Facility...</option>
-                        <option value="store-1">Retail Store #001 (Miami, FL)</option>
-                        <option value="store-2">Distribution Hub (Orlando, FL)</option>
-                        <option value="store-3">Processing Center (Tampa, FL)</option>
-                      </select>
-                    </div>
-                  )}
-
-                  <div className="mt-6 border border-[#333333] rounded-lg p-4 bg-[#161616]">
-                    <div className="flex justify-between text-sm mb-2">
-                      <span className="text-[#9ca3af]">Current Balance</span>
-                      <span className="text-white font-mono">
-                        {modalType === "BUY" || modalType === "CASH_DROP" ? formatCurrency(alphaBal + betaBal) :
-                          modalType === "CASH_PICKUP" ? "Physical Fiat" :
-                            formatChit(tradingBal)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm font-bold border-t border-[#333333] pt-2">
-                      <span className="text-white">Est. Result</span>
-                      <span className="text-[#4ade80] font-mono">
-                        {modalType === "BUY" ? formatChit(tradingBal + (parseFloat(amount) || 0)) :
-                          modalType === "SELL" ? formatCurrency(alphaBal + betaBal + (parseFloat(amount) || 0)) :
-                            modalType === "XFER" ? formatChit(tradingBal - (parseFloat(amount) || 0)) :
-                              modalType === "CASH_PICKUP" ? formatChit(tradingBal + (parseFloat(amount) || 0)) :
-                                modalType === "CASH_DROP" ? formatCurrency(alphaBal + betaBal - (parseFloat(amount) || 0)) :
-                                  ""}
-                      </span>
-                    </div>
-                  </div>
-
-                  {errorMsg && (
-                    <div className="mt-3 text-red-400 text-sm font-bold bg-red-950/40 p-3 rounded-lg border border-red-900/50">
-                      {errorMsg}
-                    </div>
-                  )}
-
-                  <button
-                    onClick={handleExecute}
-                    disabled={!amount || isNaN(parseFloat(amount))}
-                    className="w-full mt-4 bg-white text-black py-3 rounded-lg font-bold hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Execute {modalType}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {step === 2 && (
-              <div className="p-12 flex flex-col items-center justify-center text-center">
-                <Loader2 className="w-12 h-12 text-white animate-spin mb-4" />
-                <h3 className="text-xl font-bold text-white mb-2">Authenticating</h3>
-                <p className="text-[#9ca3af] text-sm animate-pulse">Running Seed-to-Sale Origin Verification...</p>
-              </div>
-            )}
-
-            {step === 3 && (
-              <div className="p-12 flex flex-col items-center justify-center text-center">
-                <CheckCircle2 className="w-16 h-16 text-[#4ade80] mb-4" />
-                <h3 className="text-2xl font-bold text-white mb-2">Transaction Complete</h3>
-                <p className="text-[#9ca3af] text-sm mb-8">Calculations applied and ledger updated cleanly.</p>
-                <button onClick={closeModal} className="w-full bg-white text-black py-3 rounded-lg font-bold hover:bg-gray-200 transition-colors">
-                  Return to Dashboard
-                </button>
-              </div>
-            )}
-
-          </div>
-        </div>
-      )}
     </div>
   );
 }
